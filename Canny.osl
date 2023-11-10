@@ -1,0 +1,359 @@
+struct COLOR{
+    color c0;
+    color c1;
+    color c2;
+    color c3;
+    color c4;
+    color c5;
+    color c6;
+    color c7;
+    color c8;
+};
+struct kernel{
+    float m0;
+    float m1;
+    float m2;
+    float m3;
+    float m4;
+    float m5;
+    float m6;
+    float m7;
+    float m8;
+};
+float frac(float x){
+    return (x - floor(x));
+}
+//伽马矫正
+void Gamma(color c,float g)
+{
+    c= color(pow(c,g));
+}
+//kernel归一化
+kernel kernel_normalization(kernel K)
+{
+    float sum;
+    kernel T=K;
+    sum=abs(K.m0)+abs(K.m1)+abs(K.m2)+abs(K.m3)+abs(K.m4)+abs(K.m5)+abs(K.m6)+abs(K.m7)+abs(K.m8);
+    float isum = 1/sum;
+    T.m0*=isum;
+    T.m1*=isum;
+    T.m2*=isum;
+    T.m3*=isum;
+    T.m4*=isum;
+    T.m5*=isum;
+    T.m6*=isum;
+    T.m7*=isum;
+    T.m8*=isum;
+    return T;
+}
+//邻域颜色求和
+color COLOR_sum(COLOR C)
+{
+    return C.c0+C.c1+C.c2+C.c3+C.c4+C.c5+C.c6+C.c7+C.c8;
+}
+//邻域颜色 按权缩放
+color COLOR_convolution(COLOR C,kernel k)
+{
+    COLOR T=C;
+    T.c0*=k.m0;
+    T.c1*=k.m1;
+    T.c2*=k.m2;
+    T.c3*=k.m3;
+    T.c4*=k.m4;
+    T.c5*=k.m5;
+    T.c6*=k.m6;
+    T.c7*=k.m7;
+    T.c8*=k.m8;
+    return COLOR_sum(T);
+}
+//获取像素颜色
+color get_color(float x,float y,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus){
+    color res;
+    if(Gaus){
+        COLOR C;
+        C.c0=texture(format(FileNameTemplate, Frame), x+dx,1-y-dy);
+        C.c1=texture(format(FileNameTemplate, Frame), x,1-y-dy);
+        C.c2=texture(format(FileNameTemplate, Frame), x-dx,1-y-dy);
+        C.c3=texture(format(FileNameTemplate, Frame), x+dx,1-y);
+        C.c4=texture(format(FileNameTemplate, Frame), x,1-y);
+        C.c5=texture(format(FileNameTemplate, Frame), x-dx,1-y);
+        C.c6=texture(format(FileNameTemplate, Frame), x+dx,1-y+dy);
+        C.c7=texture(format(FileNameTemplate, Frame), x,1-y+dy);
+        C.c8=texture(format(FileNameTemplate, Frame), x-dx,1-y+dy);
+        kernel Gaussian={1,2,1,2,4,2,1,2,1};
+        Gaussian=kernel_normalization(Gaussian);
+        res = COLOR_convolution(C,Gaussian);
+        return mix(res,luminance(res),lum);
+    }
+    res = texture(format(FileNameTemplate, Frame), x,1-y);
+    return mix(res,luminance(res),lum);
+}
+//获取邻域像素颜色
+COLOR get_COLOR(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus){
+    COLOR C;
+    C.c0=get_color(UV[0]+dx,UV[1]-dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c1=get_color(UV[0],UV[1]-dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c2=get_color(UV[0]-dx,UV[1]-dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c3=get_color(UV[0]+dx,UV[1],dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c4=get_color(UV[0],UV[1],dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c5=get_color(UV[0]-dx,UV[1],dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c6=get_color(UV[0]+dx,UV[1]+dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c7=get_color(UV[0],UV[1]+dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c8=get_color(UV[0]-dx,UV[1]+dy,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    return C;
+}
+//拉普拉斯
+color Laplacian(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    COLOR C;
+    C = get_COLOR(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    kernel Laplacian={1,1,1,1,-8,1,1,1,1};
+    return COLOR_convolution(C,Laplacian);
+}
+//高斯
+color Gaussian(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    COLOR C;
+    C = get_COLOR(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    kernel Gaussian={1,2,1,2,4,2,1,2,1};
+    Gaussian=kernel_normalization(Gaussian);
+    return COLOR_convolution(C,Gaussian);
+}
+//索贝尔
+color Sobel_x(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    COLOR C;
+    C = get_COLOR(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    kernel Sobel_x={-1,0,1,-2,0,2,-1,0,1};
+    return COLOR_convolution(C,Sobel_x);
+}
+color Sobel_y(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    COLOR C;
+    C = get_COLOR(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    kernel Sobel_y={1,2,1,0,0,0,-1,-2,-1};
+    return COLOR_convolution(C,Sobel_y);
+}
+color Sobel(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    COLOR C;
+    C = get_COLOR(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    kernel Sobel_x={-1,0,1,-2,0,2,-1,0,1};
+    kernel Sobel_y={1,2,1,0,0,0,-1,-2,-1};
+    return pow(pow(COLOR_convolution(C,Sobel_y),2)+pow(COLOR_convolution(C,Sobel_y),2),.5);
+}
+//非极大值像素梯度抑制
+color fun_Canny_suppression(color G,color t,vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus){
+    //R
+    color C=G;
+    color a,b;
+    if (t.r>1){
+        color c0=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.r);
+        color c2=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.r);
+    }
+    else if(t.r>0){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,t.r);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.r);
+    }
+    else if(t.r>-1){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+         a=mix(c0,c1,t.r);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.r);
+    }else{
+        color c0=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.r);
+        color c2=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.r);
+    }
+    if(C.r<a.r or C.r<b.r){C.r = 0;}
+    //G
+    if (t.g>1){
+        color c0=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.g);
+        color c2=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.g);
+    }
+    else if(t.g>0){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,t.g);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.g);
+    }
+    else if(t.g>-1){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,t.g);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.g);
+    }else{
+        color c0=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.g);
+        color c2=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.g);
+    }
+    if(C.g<a.g or C.g<b.g){C.g = 0;}
+    //B
+    if (t.b>1){
+        color c0=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.b);
+        color c2=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.b);
+    }
+    else if(t.b>0){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,t.b);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.b);
+    }
+    else if(t.b>-1){
+        color c0=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,t.b);
+        color c2=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,t.b);
+    }else{
+        color c0=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c1=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        a=mix(c0,c1,1/t.b);
+        color c2=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        color c3=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+        b=mix(c2,c3,1/t.b);
+    }
+    if(C.b<a.b or C.b<b.b){C.b = 0;}
+    return C;
+}
+//Canny
+color Canny_suppression(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float lum,int Gaus)
+{
+    color x=color(0);
+    color y=color(0);
+    x=Sobel_x(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    y=Sobel_y(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    color t=y/x;
+    color Sobel_color=Sobel(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    return fun_Canny_suppression(Sobel_color,t,UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+}
+color Canny_final(vector UV,float dx,float dy,string FileNameTemplate,int Frame,float H,float L,float lum,int Gaus)
+{
+    COLOR C;
+    /*
+    C.c0=Canny_suppression(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c1=Canny_suppression(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c2=Canny_suppression(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c3=Canny_suppression(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c4=Canny_suppression(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c5=Canny_suppression(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c6=Canny_suppression(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c7=Canny_suppression(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c8=Canny_suppression(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    */
+    C.c0=Sobel(UV+vector(dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c1=Sobel(UV+vector(0,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c2=Sobel(UV+vector(-dx,-dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c3=Sobel(UV+vector(dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c4=Canny_suppression(UV,dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c5=Sobel(UV+vector(-dx,0,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c6=Sobel(UV+vector(dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c7=Sobel(UV+vector(0,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    C.c8=Sobel(UV+vector(-dx,dy,0),dx,dy,FileNameTemplate,Frame,lum,Gaus);
+    float rmax,gmax,bmax;
+    rmax=max(C.c0.r,C.c1.r);
+    rmax=max(rmax,C.c2.r);
+    rmax=max(rmax,C.c3.r);
+    rmax=max(rmax,C.c4.r);
+    rmax=max(rmax,C.c5.r);
+    rmax=max(rmax,C.c6.r);
+    rmax=max(rmax,C.c7.r);
+    rmax=max(rmax,C.c8.r);
+    gmax=max(C.c0.g,C.c1.g);
+    gmax=max(gmax,C.c2.g);
+    gmax=max(gmax,C.c3.g);
+    gmax=max(gmax,C.c4.g);
+    gmax=max(gmax,C.c5.g);
+    gmax=max(gmax,C.c6.g);
+    gmax=max(gmax,C.c7.g);
+    gmax=max(gmax,C.c8.g);
+    bmax=max(C.c0.b,C.c1.b);
+    bmax=max(bmax,C.c2.b);
+    bmax=max(bmax,C.c3.b);
+    bmax=max(bmax,C.c4.b);
+    bmax=max(bmax,C.c5.b);
+    bmax=max(bmax,C.c6.b);
+    bmax=max(bmax,C.c7.b);
+    bmax=max(bmax,C.c8.b);
+    return color(C.c4.r>H or rmax>H and C.c4.r>L,C.c4.g>H or gmax>H and C.c4.g>L,C.c4.b>H or bmax>H and C.c4.b>L);
+}
+//主程序
+shader Canny(
+string FileNameTemplate="%04d.png",
+int RenderMode=0,
+int Frame = 0,
+float res_x=720,
+float res_y=1280,
+vector UV=vector(0,0,0),
+float d=1,
+float res_k=1,
+int rasterization=0,
+output color cout=color(0),
+float H=.1,
+float L=.05,
+float lum=1,
+int Equipment_gamma_correction=1,
+float Gradient_gamma=1,
+int Gaus = 0
+){
+    color output_Laplacian = color(0);
+    color output_Gaussian = color(0);
+    color output_Sobel = color(0);
+    color output_Sobel_x = color(0);
+    color output_Sobel_y = color(0);
+    color output_Canny_suppression = color(0);
+    color output_Canny_final = color(0);
+    float rx=res_x*res_k;
+    float ry=res_y*res_k;
+    float uvx=rasterization?(floor(UV[0] * rx)+0.5)/rx:UV.x;
+    float uvy=rasterization?(floor(UV[1] * ry)+0.5)/ry:UV.y;
+    if(RenderMode==0){
+        cout = get_color(uvx,uvy,d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==1){
+        cout = Canny_suppression(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==2){
+        cout = Canny_final(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,H,L,lum,Gaus);
+    }else if(RenderMode==3){
+        cout = Sobel(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==4){
+        cout = Laplacian(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==5){
+        cout = Gaussian(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==6){
+        cout = Sobel_x(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }else if(RenderMode==7){
+        cout = Sobel_y(vector(uvx,uvy,0),d/rx,d/ry,FileNameTemplate,Frame,lum,Gaus);
+    }
+    if(Equipment_gamma_correction){Gamma(cout,2.2);}
+}
